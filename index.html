@@ -389,7 +389,9 @@ $("#toRem").onclick=()=>tab("rem");
 const dl=d=>d==0?"On the day":d==1?"1 day before":d+" days before";
 const ready=i=>i.date&&S.on[i.type];
 function renderRem(){
- $("#rems").innerHTML=TYPES.map(t=>`<div class="rem" data-t="${t}"><div>${tag(t+"s")}<label class="sw"><input type="checkbox" ${S.on[t]?"checked":""}> Add to calendar</label></div>
+ const ut=usedTypes();
+ $("#rems").innerHTML=ut.length?"":`<p class="empty">Add a syllabus first — then you can pick reminders for each kind of deadline it has.</p>`;
+ $("#rems").innerHTML+=ut.map(t=>`<div class="rem" data-t="${t}"><div>${tag(t+"s")}<label class="sw"><input type="checkbox" ${S.on[t]?"checked":""}> Add to calendar</label></div>
   <div class="chips">${DAYS.map(d=>`<button data-d="${d}" class="${S.rem[t].includes(d)?"on":""}" aria-pressed="${S.rem[t].includes(d)}" ${S.on[t]?"":"disabled"}>${dl(d)}</button>`).join("")}</div></div>`).join("").replace(/var\(--t-(\w+)s\)/g,"var(--t-$1)").replace(/var\(--c-(\w+)s\)/g,"var(--c-$1)");
  const all=S.items.filter(i=>S.on[i.type]),r=all.filter(ready),nw=r.filter(i=>!i.exported).length,up=r.filter(i=>i.exported&&i.changed).length,inn=r.filter(i=>i.exported&&!i.changed).length,nod=all.length-r.length;
  $("#sum").innerHTML=`<div><b>${r.length} of ${all.length}</b> items have a date.</div>
