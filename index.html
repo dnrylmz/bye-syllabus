@@ -99,8 +99,22 @@ select.tsel:hover{filter:brightness(.96)}
 .empty{color:var(--mute);font-size:15px;padding:8px 0}
 .empty-big{text-align:center;padding:48px 16px;color:var(--mute)}.empty-big div{font-size:40px;margin-bottom:6px}
 .rem{display:grid;grid-template-columns:170px minmax(0,1fr);gap:12px;align-items:center;border-bottom:1px solid var(--line);padding:12px 0}
-.chips{display:flex;gap:6px;flex-wrap:wrap}.chips button{min-height:34px;padding:2px 10px;font-size:13.5px;border-radius:99px}
-.chips button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.rlist{display:flex;gap:8px 16px;flex-wrap:wrap;align-items:center}
+.rsel{display:inline-flex;align-items:center;gap:6px;font-size:14.5px}
+.rsel select{width:auto;border:1px solid var(--line);min-height:36px;padding:2px 8px;font-size:14.5px}
+.rsel .x{min-width:30px;min-height:30px}
+.addr{min-height:34px;font-size:13.5px;border-style:dashed}
+.donebox{margin-top:4px;border-bottom:1px solid var(--line)}
+.donebox>summary{cursor:pointer;padding:10px 4px;font-size:14.5px;color:var(--mute);list-style:none;display:flex;gap:8px;align-items:center}
+.donebox>summary::-webkit-details-marker{display:none}
+.donebox>summary::before{content:"▸";font-size:12px;transition:transform .15s}.donebox[open]>summary::before{transform:rotate(90deg)}
+.donebox>summary b{color:var(--c-presentation);font-weight:600}
+.donebox .item{opacity:.75}
+.plist{margin-top:16px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.plist h3{font-size:14px;color:var(--mute);font-weight:500;padding:10px 14px;background:var(--soft);margin:0}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 14px;border-top:1px solid var(--line);font-size:14.5px}
+.prow .t{font-weight:500}.prow .d{white-space:nowrap;text-align:right}
+.prow .r{grid-column:1/-1;font-size:13px;color:var(--mute)}
 .sw{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--mute);margin-top:6px}.sw input{width:16px;min-height:16px}
 .note{font-size:14px;color:var(--mute)}
 .sum{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
@@ -168,10 +182,12 @@ pre{background:var(--soft);border-radius:6px;padding:10px;font-size:12px;max-hei
 
    <section id="t-rem" hidden>
     <h2>When should we remind you?</h2>
-    <p class="note" style="margin-top:0">Pick up to 5 per type (Google Calendar keeps max. 5 reminders per event). For items without a time, reminders pop up at 9:00.</p>
+    <p class="note" style="margin-top:0">Up to 5 reminders per type (Google Calendar keeps max. 5 per event). For items without a time, reminders pop up at 9:00.</p>
     <div id="rems"></div>
     <div class="sum" id="sum"></div>
-    <div class="row"><button class="primary" id="exp" style="flex:0 0 auto">Add to my calendar</button></div>
+    <div id="preview"></div>
+    <div class="row" style="margin-top:16px"><button class="primary" id="exp" style="flex:0 0 auto">Add new items to my calendar</button><button id="expAll" style="flex:0 0 auto">Download everything</button></div>
+    <p class="note" id="allNote">“Download everything” is handy for a new calendar or another device. Importing it into a calendar that already has these items can create duplicates.</p>
     <div class="status" id="expStatus" aria-live="polite"></div>
    </section>
 
@@ -195,7 +211,6 @@ pre{background:var(--soft);border-radius:6px;padding:10px;font-size:12px;max-hei
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const TYPES=["exam","assignment","presentation","project","quiz","lecture","other"];
 const DUE=["exam","assignment","presentation","project","quiz"];
-const DAYS=[0,1,2,3,7,14];
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const uid=()=>Math.random().toString(36).slice(2,10);
 const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
@@ -366,18 +381,24 @@ function renderReview(){
  const html=S.courses.filter(c=>has(selC,c.id)).map(c=>{
   const its=S.items.filter(i=>i.course==c.id&&has(selT,i.type)).sort((a,b)=>a.ord-b.ord);
   if(!its.length)return"";
+  const isDone=i=>i.exported&&!i.changed,todo=its.filter(i=>!isDone(i)),done=its.filter(isDone);
   return`<div class="group"><h3>📘 ${esc(c.title)} <span class="note" style="font-weight:400">${its.length} items</span></h3>
   <div class="thead"><span></span><span>Name</span><span>Type</span><span>Date</span><span>Time</span><span></span></div>
-  ${its.map(i=>`<div class="item" data-id="${i.id}">
+  ${todo.map(row).join("")}
+  ${done.length?`<details class="donebox" data-c="${c.id}" ${openDone.has(c.id)?"open":""}><summary><b>✓ ${done.length}</b> already in your calendar</summary>${done.map(row).join("")}</details>`:""}
+  ${!todo.length&&!done.length?"":""}</div>`}).join("");
+ $("#items").innerHTML=html||`<p class="empty">Nothing matches these filters.</p>`;
+}
+const openDone=new Set();
+$("#items").addEventListener("toggle",e=>{const d=e.target;if(d.matches?.(".donebox")){d.open?openDone.add(d.dataset.c):openDone.delete(d.dataset.c)}},true);
+function row(i){return`<div class="item" data-id="${i.id}">
    ${warn(i)}
    <input data-k="title" value="${esc(i.title)}" aria-label="Name">
    <select data-k="type" class="tsel" aria-label="Type" style="background:var(--t-${i.type});color:var(--c-${i.type})">${TYPES.map(t=>`<option ${t==i.type?"selected":""}>${t}</option>`).join("")}</select>
    <input type="date" data-k="date" value="${i.date||""}" aria-label="Date">
    <input type="time" data-k="time" value="${i.time||""}" aria-label="Time">
    <button class="x" data-del aria-label="Delete item">✕</button>
-   ${i.source?`<p class="src">“${esc(i.source)}”</p>`:""}</div>`).join("")}</div>`}).join("");
- $("#items").innerHTML=html||`<p class="empty">Nothing matches these filters.</p>`;
-}
+   ${i.source?`<p class="src">“${esc(i.source)}”</p>`:""}</div>`}
 function renderAdded(){
  $("#added").innerHTML=S.courses.length?`<div class="added"><h3>Added so far</h3>${S.courses.map(c=>{const n=S.items.filter(i=>i.course==c.id&&DUE.includes(i.type)).length;return`<div class="fl"><span>📘 ${esc(c.title)}</span><span class="st">${[c.code,n+" deadline"+(n==1?"":"s")].filter(Boolean).map(esc).join(" · ")}</span></div>`}).join("")}</div>`:"";
 }
@@ -387,22 +408,33 @@ $("#add").onclick=()=>{let c=S.courses[0];if(!c){c={id:uid(),title:"My course",c
 $("#toRem").onclick=()=>tab("rem");
 
 /* ---------- reminders & export ---------- */
-const dl=d=>d==0?"On the day":d==1?"1 day before":d+" days before";
+const OPTS=[0,1,2,3,5,7,10,14,21];
+const fmtT=d=>d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+const remAt=(i,n)=>{if(i.time){const d=new Date(i.date+"T"+i.time);if(n)d.setDate(d.getDate()-n);else d.setHours(d.getHours()-1);return d}const d=new Date(i.date+"T09:00");d.setDate(d.getDate()-n);return d};
 const ready=i=>i.date&&S.on[i.type];
 function renderRem(){
  const ut=usedTypes();
- $("#rems").innerHTML=ut.length?"":`<p class="empty">Add a syllabus first — then you can pick reminders for each kind of deadline it has.</p>`;
- $("#rems").innerHTML+=ut.map(t=>`<div class="rem" data-t="${t}"><div>${tag(t+"s")}<label class="sw"><input type="checkbox" ${S.on[t]?"checked":""}> Add to calendar</label></div>
-  <div class="chips">${DAYS.map(d=>`<button data-d="${d}" class="${S.rem[t].includes(d)?"on":""}" aria-pressed="${S.rem[t].includes(d)}" ${S.on[t]&&(S.rem[t].includes(d)||S.rem[t].length<5)?"":"disabled"}>${dl(d)}</button>`).join("")}</div></div>`).join("").replace(/var\(--t-(\w+)s\)/g,"var(--t-$1)").replace(/var\(--c-(\w+)s\)/g,"var(--c-$1)");
- const all=S.items.filter(i=>S.on[i.type]),r=all.filter(ready),nw=r.filter(i=>!i.exported).length,up=r.filter(i=>i.exported&&i.changed).length,inn=r.filter(i=>i.exported&&!i.changed).length,nod=all.length-r.length;
- $("#sum").innerHTML=`<div><b>${r.length} of ${all.length}</b> items have a date.</div>
-  ${nw+up?`<div>📅 <b>${nw+up}</b> will go into your calendar file${up?` (${up} of them updated)`:""}.</div>`:`<div>📅 Nothing new to add right now.</div>`}
+ for(const t of ut)S.rem[t]=[...new Set(S.rem[t].filter(n=>OPTS.includes(n)))].sort((a,b)=>a-b).slice(0,5);
+ $("#rems").innerHTML=ut.length?ut.map(t=>{const a=S.rem[t];return`<div class="rem" data-t="${t}"><div>${tag(t+"s").replace(/(--[tc]-\w+)s\)/g,"$1)")}<label class="sw"><input type="checkbox" data-on ${S.on[t]?"checked":""}> Add to calendar</label></div>
+  <div class="rlist">${a.map((n,k)=>`<span class="rsel"><select data-k="${k}" aria-label="Reminder ${k+1}" ${S.on[t]?"":"disabled"}>${OPTS.map(o=>`<option value="${o}" ${o==n?"selected":""} ${o!=n&&a.includes(o)?"disabled":""}>${o?o:"On the day"}</option>`).join("")}</select>${n?(n==1?"day before":"days before"):""}<button class="x" data-rm="${k}" aria-label="Remove reminder" ${S.on[t]?"":"disabled"}>✕</button></span>`).join("")}
+  ${a.length<5&&S.on[t]?`<button class="addr" data-add>+ Add reminder</button>`:""}${!a.length?`<span class="note">No reminders</span>`:""}</div></div>`}).join(""):`<p class="empty">Add a syllabus first — then you can pick reminders for each kind of deadline it has.</p>`;
+ const all=S.items.filter(i=>S.on[i.type]),r=all.filter(ready),todo=r.filter(i=>!i.exported||i.changed),nw=todo.filter(i=>!i.exported).length,up=todo.length-nw,inn=r.length-todo.length,nod=all.length-r.length;
+ $("#sum").innerHTML=ut.length?`<div><b>${r.length} of ${all.length}</b> items have a date.</div>
+  ${todo.length?`<div>📅 <b>${todo.length}</b> will go into your calendar file${up?` (${up} of them updated)`:""}.</div>`:`<div>📅 Nothing new to add right now.</div>`}
   ${inn?`<div>✓ ${inn} already in your calendar.</div>`:""}
-  ${nod?`<div>! ${nod} still need a date — <button class="linkbtn" id="goRev">add them in Review</button>.</div>`:""}`;
- $("#exp").disabled=!(nw+up);
+  ${nod?`<div>! ${nod} still need a date — <button class="linkbtn" id="goRev">add them in Review</button>.</div>`:""}`:"";
+ const prow=i=>{const c=course(i.course),rs=(S.rem[i.type]||[]).map(n=>remAt(i,n)).sort((a,b)=>a-b);
+  return`<div class="prow"><div><span class="t">${esc(i.title)}</span> <span class="note">${esc(c.code||c.title||"")}</span> ${tag(i.type)}</div><div class="d">${fmt(i.date)}${i.time?" · "+i.time:""}</div>
+  <div class="r">🔔 ${rs.length?rs.map(fmtT).join(" · "):"No reminders"}</div></div>`};
+ const srt=(a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||""));
+ const nwL=todo.filter(i=>!i.exported).sort(srt),upL=todo.filter(i=>i.exported).sort(srt);
+ $("#preview").innerHTML=todo.length?`<div class="plist">${nwL.length?`<h3>New · ${nwL.length}</h3>${nwL.map(prow).join("")}`:""}${upL.length?`<h3>Updated · ${upL.length}</h3>${upL.map(prow).join("")}`:""}</div>`:"";
+ $("#exp").disabled=!todo.length;$("#expAll").disabled=!r.length;$("#allNote").hidden=!r.length;
 }
-$("#rems").addEventListener("click",e=>{const b=e.target.closest("[data-d]");if(!b)return;const t=b.closest(".rem").dataset.t,d=+b.dataset.d,a=S.rem[t];if(!a.includes(d)&&a.length>=5)return;S.rem[t]=a.includes(d)?a.filter(x=>x!=d):[...a,d].sort((x,y)=>x-y);save();renderRem()});
-$("#rems").addEventListener("change",e=>{const t=e.target.closest(".rem").dataset.t;S.on[t]=e.target.checked;save();renderRem()});
+$("#rems").addEventListener("click",e=>{const el=e.target.closest("[data-rm],[data-add]");if(!el)return;const t=el.closest(".rem").dataset.t,a=S.rem[t];
+ if(el.dataset.add!==undefined){const n=OPTS.find(o=>!a.includes(o));if(n!=null&&a.length<5)a.push(n)}else a.splice(+el.dataset.rm,1);save();renderRem()});
+$("#rems").addEventListener("change",e=>{const t=e.target.closest(".rem").dataset.t;
+ if(e.target.matches("[data-on]"))S.on[t]=e.target.checked;else if(e.target.dataset.k!=null)S.rem[t][+e.target.dataset.k]=+e.target.value;save();renderRem()});
 
 const icsEsc=s=>String(s||"").replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/[,;]/g,m=>"\\"+m);
 const end1h=(date,time)=>{const e=new Date(date+"T"+time);e.setHours(e.getHours()+1);return iso(e).replace(/-/g,"")+"T"+String(e.getHours()).padStart(2,"0")+String(e.getMinutes()).padStart(2,"0")+"00"};
@@ -419,15 +451,16 @@ function ics(list){
  L.push("END:VCALENDAR");return L.join("\r\n");
 }
 const markDone=list=>{list.forEach(i=>{if(i.exported&&i.changed)i.seq=(i.seq||0)+1;i.exported=true;i.changed=false});save();renderRem();renderReview()};
-function doExport(){
- const list=S.items.filter(i=>ready(i)&&(!i.exported||i.changed)),es=$("#expStatus");es.classList.remove("err");
+function doExport(all){
+ const list=S.items.filter(i=>ready(i)&&(all||!i.exported||i.changed)),es=$("#expStatus");es.classList.remove("err");
  if(!list.length){es.textContent="Nothing new to add — your calendar is up to date.";return}
  const url=URL.createObjectURL(new Blob([ics(list)],{type:"text/calendar"})),a=document.createElement("a");
  a.href=url;a.download="bye-syllabus.ics";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);
  const n=list.length;markDone(list);
  es.textContent=`Downloaded bye-syllabus.ics with ${n} item${n>1?"s":""}. Open it to add them to your calendar (Google Calendar: Settings → Import). They now show a ✓ in Review.`;
 }
-$("#exp").onclick=doExport;
+$("#exp").onclick=()=>doExport(false);
+$("#expAll").onclick=()=>doExport(true);
 $("#sum").addEventListener("click",e=>{if(e.target.id=="goRev")tab("review")});
 
 /* ---------- courses ---------- */
