@@ -168,7 +168,7 @@ pre{background:var(--soft);border-radius:6px;padding:10px;font-size:12px;max-hei
 
    <section id="t-rem" hidden>
     <h2>When should we remind you?</h2>
-    <p class="note" style="margin-top:0">Pick as many as you like. For items without a time, reminders pop up at 9:00.</p>
+    <p class="note" style="margin-top:0">Pick up to 5 per type (Google Calendar keeps max. 5 reminders per event). For items without a time, reminders pop up at 9:00.</p>
     <div id="rems"></div>
     <div class="sum" id="sum"></div>
     <div class="row"><button class="primary" id="exp" style="flex:0 0 auto">Add to my calendar</button></div>
@@ -214,6 +214,7 @@ S=S||{courses:[],items:[]};S.rem=S.rem||structuredClone(DEF);S.on=S.on||structur
 const byDate=(a,b)=>(a.date||"9999").localeCompare(b.date||"9999");
 if(S.items.some(i=>i.ord==null))[...S.items].sort(byDate).forEach((i,k)=>i.ord=k);
 const nextOrd=()=>S.items.reduce((m,i)=>Math.max(m,i.ord??0),-1)+1;
+for(const t in S.rem)if(S.rem[t].length>5)S.rem[t]=S.rem[t].slice(0,5);
 const save=()=>{try{localStorage.setItem("byesyl2",JSON.stringify(S))}catch(e){}};
 const course=id=>S.courses.find(c=>c.id===id)||{};
 let range=14;
@@ -392,7 +393,7 @@ function renderRem(){
  const ut=usedTypes();
  $("#rems").innerHTML=ut.length?"":`<p class="empty">Add a syllabus first — then you can pick reminders for each kind of deadline it has.</p>`;
  $("#rems").innerHTML+=ut.map(t=>`<div class="rem" data-t="${t}"><div>${tag(t+"s")}<label class="sw"><input type="checkbox" ${S.on[t]?"checked":""}> Add to calendar</label></div>
-  <div class="chips">${DAYS.map(d=>`<button data-d="${d}" class="${S.rem[t].includes(d)?"on":""}" aria-pressed="${S.rem[t].includes(d)}" ${S.on[t]?"":"disabled"}>${dl(d)}</button>`).join("")}</div></div>`).join("").replace(/var\(--t-(\w+)s\)/g,"var(--t-$1)").replace(/var\(--c-(\w+)s\)/g,"var(--c-$1)");
+  <div class="chips">${DAYS.map(d=>`<button data-d="${d}" class="${S.rem[t].includes(d)?"on":""}" aria-pressed="${S.rem[t].includes(d)}" ${S.on[t]&&(S.rem[t].includes(d)||S.rem[t].length<5)?"":"disabled"}>${dl(d)}</button>`).join("")}</div></div>`).join("").replace(/var\(--t-(\w+)s\)/g,"var(--t-$1)").replace(/var\(--c-(\w+)s\)/g,"var(--c-$1)");
  const all=S.items.filter(i=>S.on[i.type]),r=all.filter(ready),nw=r.filter(i=>!i.exported).length,up=r.filter(i=>i.exported&&i.changed).length,inn=r.filter(i=>i.exported&&!i.changed).length,nod=all.length-r.length;
  $("#sum").innerHTML=`<div><b>${r.length} of ${all.length}</b> items have a date.</div>
   ${nw+up?`<div>📅 <b>${nw+up}</b> will go into your calendar file${up?` (${up} of them updated)`:""}.</div>`:`<div>📅 Nothing new to add right now.</div>`}
@@ -400,7 +401,7 @@ function renderRem(){
   ${nod?`<div>! ${nod} still need a date — <button class="linkbtn" id="goRev">add them in Review</button>.</div>`:""}`;
  $("#exp").disabled=!(nw+up);
 }
-$("#rems").addEventListener("click",e=>{const b=e.target.closest("[data-d]");if(!b)return;const t=b.closest(".rem").dataset.t,d=+b.dataset.d,a=S.rem[t];S.rem[t]=a.includes(d)?a.filter(x=>x!=d):[...a,d].sort((x,y)=>x-y);save();renderRem()});
+$("#rems").addEventListener("click",e=>{const b=e.target.closest("[data-d]");if(!b)return;const t=b.closest(".rem").dataset.t,d=+b.dataset.d,a=S.rem[t];if(!a.includes(d)&&a.length>=5)return;S.rem[t]=a.includes(d)?a.filter(x=>x!=d):[...a,d].sort((x,y)=>x-y);save();renderRem()});
 $("#rems").addEventListener("change",e=>{const t=e.target.closest(".rem").dataset.t;S.on[t]=e.target.checked;save();renderRem()});
 
 const icsEsc=s=>String(s||"").replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/[,;]/g,m=>"\\"+m);
@@ -412,7 +413,7 @@ function ics(list){
   L.push("BEGIN:VEVENT","UID:"+i.id+"@byesyllabus","SEQUENCE:"+(i.seq||0),"DTSTAMP:"+st,"SUMMARY:"+icsEsc(`${i.title} (${c.code||c.title||i.type})`),"DESCRIPTION:"+icsEsc(`${i.type[0].toUpperCase()+i.type.slice(1)} · ${c.title||""}`+(i.source?`\n“${i.source}”`:"")));
   if(i.time)L.push("DTSTART:"+d+"T"+i.time.replace(":","")+"00","DTEND:"+end1h(i.date,i.time));
   else L.push("DTSTART;VALUE=DATE:"+d,"DTEND;VALUE=DATE:"+addDays(i.date,1).replace(/-/g,""));
-  for(const n of S.rem[i.type]||[])L.push("BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsEsc(`${i.title} — ${n?(n==1?"tomorrow":n+" days left"):"today"}`),"TRIGGER:"+(i.time?(n?`-P${n}D`:"-PT1H"):(n?`-PT${n*24-9}H`:"PT9H")),"END:VALARM");
+  for(const n of (S.rem[i.type]||[]).slice(0,5))L.push("BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsEsc(`${i.title} — ${n?(n==1?"tomorrow":n+" days left"):"today"}`),"TRIGGER:"+(i.time?(n?`-P${n}D`:"-PT1H"):(n?`-PT${n*24-9}H`:"PT9H")),"END:VALARM");
   L.push("END:VEVENT");
  }
  L.push("END:VCALENDAR");return L.join("\r\n");
